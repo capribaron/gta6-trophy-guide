@@ -14,13 +14,40 @@
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-frontend.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+
+// Validate the trophy data before handing anything in: the guide is only
+// worth entering if its data file parses, holds exactly the official 55
+// trophies (1 platinum, 2 gold, 6 silver, 46 bronze), and every trophy has
+// a non-blank guide in our own words plus at least one cited source. Fail
+// loudly instead of submitting a broken or half-written guide.
+const trophyDoc = JSON.parse(readFileSync(join(here, 'app', 'data', 'trophies.json'), 'utf-8'));
+const trophyList = trophyDoc.trophies;
+if (!Array.isArray(trophyList) || trophyList.length !== 55) {
+  throw new Error(`trophies.json must hold exactly 55 trophies, found ${Array.isArray(trophyList) ? trophyList.length : 'no array'}`);
+}
+const gradeCounts = { platinum: 0, gold: 0, silver: 0, bronze: 0 };
+const seenNames = new Set();
+for (const t of trophyList) {
+  if (typeof t.name !== 'string' || !t.name.trim()) throw new Error('a trophy has no name');
+  if (seenNames.has(t.name)) throw new Error(`duplicate trophy name: ${t.name}`);
+  seenNames.add(t.name);
+  if (typeof t.description !== 'string' || !t.description.trim()) throw new Error(`trophy ${t.name} has no official description`);
+  if (!(t.grade in gradeCounts)) throw new Error(`trophy ${t.name} has unknown grade ${t.grade}`);
+  gradeCounts[t.grade] += 1;
+  if (typeof t.guide !== 'string' || !t.guide.trim()) throw new Error(`trophy ${t.name} has no guide`);
+  if (!Array.isArray(t.sources) || t.sources.length === 0) throw new Error(`trophy ${t.name} cites no source`);
+}
+if (gradeCounts.platinum !== 1 || gradeCounts.gold !== 2 || gradeCounts.silver !== 6 || gradeCounts.bronze !== 46) {
+  throw new Error(`grade split must be 1/2/6/46, found ${JSON.stringify(gradeCounts)}`);
+}
+console.log(`trophies.json OK: 55 trophies (1 platinum, 2 gold, 6 silver, 46 bronze), every guide written and sourced.`);
 
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'app'), join(out, 'app'), { recursive: true });
